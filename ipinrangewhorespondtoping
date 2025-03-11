@@ -13,3 +13,5 @@ for ip in seq 1 254 ; do #schleife über alle zahlen 1-254 (192.168.2.1 - 192.16
   ping -c 1 $1.$ip | grep "64 bytes" | cut -d " " -f 4 | tr -d ":" &
 
 done #ende der schleife
+
+#Beispiel Aufruf: bash script.sh 192.168.1
