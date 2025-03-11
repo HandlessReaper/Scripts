@@ -1,0 +1,15 @@
+#!/bin/bash 
+#SHEBANG->script mit bash shell ausführen (interpreter)
+
+for ip in seq 1 254 ; do #schleife über alle zahlen 1-254 (192.168.2.1 - 192.168.2.254) .0 ist die netzwerkadd und .255 die broadcast
+
+#ping -c 1 ->ein ping paket an die ip senden -> $1 ist erstes arg (übergabeparameter) $1.$ip -> zsmsetzen dieses arg und der aktuellen ip (aus for loop)
+# | -> pipes (weiterleitung)
+# grep sucht nach zeilen die 64 bytes enthalten was auf antwort des pings rückschließt
+#cut -d " " legt als trennzeichen space fest und -f 4 gibt an das viertes wort genommen werden soll -> sollte die ip sein da res: "64 bytes from ip:"
+#tr -d ":" entfernt einfach den doppelpunkt 
+# & -> mach das alles im background --> somit pings parallel
+
+  ping -c 1 $1.$ip | grep "64 bytes" | cut -d " " -f 4 | tr -d ":" &
+
+done #ende der schleife
