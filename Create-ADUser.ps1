@@ -30,7 +30,7 @@ $SecurePassword = ($Password | ConvertTo-SecureString -AsPlainText -Force)
 #Call zu New-ADUser um AD User zu erstellen (cmdlet)
 New-ADUser `
     -SamAccountName $UserName `
-    -UserPrincipalName "$Username@Domain" `
+    -UserPrincipalName "$Username@$Domain" `
     -Name "$FirstName $LastName" `
     -GivenName $FirstName `
     -Surname $LastName `
