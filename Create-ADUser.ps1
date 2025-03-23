@@ -19,7 +19,15 @@ param(
 )
 
 
-#Call to New-ADUser um AD User zu erstellen (cmdlet)
+#Random Passwort generieren
+#0-9, a-z, A-Z als ASCII -> in Char umwandeln -> 12 Zeichen zufällig auswählen
+$Password = -join((0x30..0x39)+(0x41..0x5A)+(0x61..0x7A) | Get-Random -Count 12 | ForEach-Object {[char]$_})
+Write-Host "Password wurde generiert: $Password"
+
+#encrypten des Passworts 
+$SecurePassword = ($Password | ConvertTo-SecureString -AsPlainText -Force)
+
+#Call zu New-ADUser um AD User zu erstellen (cmdlet)
 New-ADUser `
     -SamAccountName $UserName `
     -UserPrincipalName "$Username@Domain" `
