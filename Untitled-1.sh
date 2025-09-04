@@ -1,9 +1,8 @@
-#!/usr/bin/env bash                       # Shebang: Nutzt bash als Interpreter
+#!/usr/bin/env bash                       
 # legt Labels in GitHub Repos an           # Skriptbeschreibung
 # Basis: Excel Tabelle
 #
-# brew install gh + gh auth login          # Hinweis: gh-CLI installieren und authentifizieren
-#
+# brew install gh + gh auth login         
 #
 # Nutzung:
 # chmod +x labeler.sh                      # Skript ausführbar machen
@@ -13,7 +12,7 @@ set -euo pipefail #e bei fehler down,u verbot unges. var, o p-- für pipefehler
 
 # Repo List - noch anlegen
 REPOS=(                                    # Array für Repositories
-  "https://github.com/HandlessReaper/Landing"   # Beispiel-Repo (auskommentiert)
+  "https://github.com/HandlessReaper/Landing"   
 )
 
 # Basic ass farben
@@ -73,46 +72,49 @@ BREAKING_LABELS=(                          # Labels für Breaking Changes
   "breaking:possible|$COLOR_YELLOW"
 )
 
-require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "Fehlt: $1"; exit 1; }; } # Prüft, ob ein Kommando existiert
-normalize_repo() {                         # Normalisiert Repo-URL zu owner/repo
+require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "Fehlt: $1"; exit 1; }; }
+
+normalize_repo() {
   local line="$1"
-  echo "$line" | sed -E 's#^git@github\.com:##; s#^https?://github\.com/##; s#\.git$##;' | xargs
+  echo "$line" \
+    | sed -E 's#^git@github\.com:##; s#^https?://github\.com/##; s#\.git$##;' \
+    | xargs
 }
 
-ensure_label() {                           # Erstellt oder aktualisiert ein Label im Repo
+ensure_label() {
   local repo="$1" name="$2" color="$3"
   if [[ -n "${DRY_RUN:-}" ]]; then
-    echo "[DRY RUN] ensure $repo -> $name (#$color)"
+    echo "  [DRY RUN] ensure $repo -> $name (#$color)"
     return 0
   fi
   if gh label list --repo "$repo" --limit 300 --search "$name" | awk '{print $1}' | grep -Fxq "$name"; then
     gh label edit "$name" --repo "$repo" --color "$color" >/dev/null 2>&1 || true
-    echo "[OK] (exists) $repo -> $name (updated)"
+    echo "  [OK] (update) $name"
   else
     gh label create "$name" --repo "$repo" --color "$color" >/dev/null
-    echo "[OK] (created) $repo -> $name"
+    echo "  [OK] (create) $name"
   fi
 }
 
-# Menü-Helfer
-choose_one() {                             # Auswahlmenü für eine Kategorie
-  local prompt="$1"; shift
+choose_from_list() {
+  # usage: choose_from_list "Titel" "${array[@]}"
+  local title="$1"; shift
   local -a options=( "$@" )
   echo
-  echo "== $prompt =="
+  echo "== $title =="
   local i=1
   for opt in "${options[@]}"; do
     local name="${opt%%|*}"
-    echo "  $i) $name"
+    printf "  %2d) %s\n" "$i" "$name"
     ((i++))
   done
-  echo "  0) Überspringen"
+  echo "   0) Überspringen"
   local choice
   while true; do
-    read -rp "Auswahl (Zahl): " choice
+    read -rp "Auswahl [0-${#options[@]}]: " choice
     [[ "$choice" =~ ^[0-9]+$ ]] || { echo "Bitte Zahl eingeben."; continue; }
     if (( choice == 0 )); then
-      echo ""
+      echo ""  # leere Rückgabe = Skip
       return 0
     fi
     if (( choice >= 1 && choice <= ${#options[@]} )); then
@@ -123,18 +125,18 @@ choose_one() {                             # Auswahlmenü für eine Kategorie
   done
 }
 
-# Repo-Auswahl
-choose_repo() {                            # Auswahlmenü für Repository
+choose_repo() {
+  echo
   echo "== Repository wählen =="
   local i=1
   for r in "${REPOS[@]}"; do
-    echo "  $i) $r"
+    printf "  %2d) %s\n" "$i" "$r"
     ((i++))
-  done                                       # Fehler: 'end' → 'done'
-  echo "  0) Abbrechen"
+  done
+  echo "   0) Abbrechen"
   local choice
   while true; do
-    read -rp "Auswahl (Zahl): " choice
+    read -rp "Auswahl [0-${#REPOS[@]}]: " choice
     [[ "$choice" =~ ^[0-9]+$ ]] || { echo "Bitte Zahl eingeben."; continue; }
     if (( choice == 0 )); then
       echo ""
@@ -149,57 +151,66 @@ choose_repo() {                            # Auswahlmenü für Repository
   done
 }
 
-# Main
-require_cmd gh                             # Prüft, ob gh installiert ist
-if ! gh auth status >/dev/null 2>&1; then  # Prüft, ob gh authentifiziert ist
+label_flow_for_repo() {
+  local repo="$1"
+  echo "-- Ausgewählt: $repo"
+
+  local picked=()
+  local sel
+
+  sel="$(choose_from_list 'Package Manager' "${PKG_MANAGER_LABELS[@]}")";         [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Direct/Transitive' "${DIRECT_TRANSITIVE_LABELS[@]}")";  [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Exposure' "${EXPOSURE_LABELS[@]}")";                    [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Runtime/Dev' "${USAGE_LABELS[@]}")";                    [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Maintained/Outdated' "${MAINTENANCE_LABELS[@]}")";      [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Fix Status' "${FIX_STATUS_LABELS[@]}")";                [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Priority' "${PRIORITY_LABELS[@]}")";                    [[ -n "$sel" ]] && picked+=( "$sel" )
+  sel="$(choose_from_list 'Breaking Risk' "${BREAKING_LABELS[@]}")";               [[ -n "$sel" ]] && picked+=( "$sel" )
+
+  echo
+  echo "== Zusammenfassung =="
+  if ((${#picked[@]}==0)); then
+    echo "Keine Labels gewählt."
+  else
+    for p in "${picked[@]}"; do
+      local name="${p%%|*}" color="${p##*|}"
+      echo "  - $name (#$color)"
+    done
+  fi
+
+  echo
+  read -rp "Jetzt auf GitHub anlegen/aktualisieren? [y/N]: " go
+  if [[ "$go" =~ ^[Yy]$ ]]; then
+    for p in "${picked[@]}"; do
+      local name="${p%%|*}" color="${p##*|}"
+      ensure_label "$repo" "$name" "$color"
+    done
+    echo "Fertig für $repo."
+  else
+    echo "Abgebrochen für $repo."
+  fi
+}
+
+# ===== Main Loop =====
+require_cmd gh
+if ! gh auth status >/dev/null 2>&1; then
   echo "Bitte vorher 'gh auth login' ausführen."
   exit 1
 fi
 
 echo "=== Interaktive Repo-Label-Vergabe ==="
-repo="$(choose_repo)" || { echo "Abbruch."; exit 0; } # Repo auswählen
-[[ -z "$repo" ]] && { echo "Abbruch."; exit 0; }     # Abbruch, falls leer
-if ! [[ "$repo" =~ .+/.+ ]]; then                    # Prüft Repo-Format
-  echo "Ungültiges Repo-Format: $repo"
-  exit 1
-fi
-echo "-- Ausgewählt: $repo"
 
-declare -a picked=()                                 # Array für gewählte Labels
+while true; do
+  repo="$(choose_repo)" || { echo "Abbruch."; exit 0; }
+  [[ -z "$repo" ]] && { echo "Abbruch."; exit 0; }
+  if ! [[ "$repo" =~ .+/.+ ]]; then
+    echo "Ungültiges Repo-Format: $repo"
+    continue
+  fi
 
-# Pro Kategorie Auswahl treffen (leer = überspringen)
-sel="$(choose_one 'Package Manager' "${PKG_MANAGER_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Direct/Transitive' "${DIRECT_TRANSITIVE_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Exposure' "${EXPOSURE_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Runtime/Dev' "${USAGE_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Maintained/Outdated' "${MAINTENANCE_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Fix Status' "${FIX_STATUS_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Priority' "${PRIORITY_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
-sel="$(choose_one 'Breaking Risk' "${BREAKING_LABELS[@]}")"; [[ -n "$sel" ]] && picked+=( "$sel" )
+  label_flow_for_repo "$repo"
 
-echo
-echo "== Zusammenfassung =="
-if ((${#picked[@]}==0)); then
-  echo "Keine Labels gewählt. Ende."
-  exit 0
-fi
-for p in "${picked[@]}"; do
-  name="${p%%|*}"; color="${p##*|}"
-  echo "  - $name (#$color)"
+  echo
+  read -rp "Noch ein Repo bearbeiten? [y/N]: " again
+  [[ "$again" =~ ^[Yy]$ ]] || { echo "Bye."; break; }
 done
-
-echo
-read -rp "Jetzt auf GitHub anlegen/aktualisieren? [y/N]: " go
-if [[ ! "$go" =~ ^[Yy]$ ]]; then
-  echo "Abgebrochen."
-  exit 0
-fi
-
-# Anlegen / Aktualisieren
-for p in "${picked[@]}"; do
-  name="${p%%|*}"
-  color="${p##*|}"
-  ensure_label "$repo" "$name" "$color"
-done
-
-echo "Fertig für $repo."
